@@ -1,3 +1,7 @@
+<img width="893" alt="image" src="https://github.com/user-attachments/assets/fe3a56d8-c319-4cd8-9b98-75ade4291ba7">
+
+
+
 # Word Frequency Analyzer
 
 A web-based text analysis tool with special support for Amharic script and comprehensive word frequency analysis capabilities.
