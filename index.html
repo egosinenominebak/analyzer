@@ -136,7 +136,6 @@
                                         <th>Word</th>
                                         <th>Frequency</th>
                                         <th>Length</th>
-                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="resultBody"></tbody>
@@ -169,20 +168,23 @@
         let wordFrequency = {};
         let debounceTimer;
 
-        // Theme Toggle
+        // Initialize event listeners
+        function initialize() {
+            document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+            document.getElementById('textInput').addEventListener('input', debouncedAnalyze);
+        }
+
         function toggleTheme() {
             const body = document.body;
             body.setAttribute('data-bs-theme', 
                 body.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark');
         }
 
-        // Debounced Analysis
         function debouncedAnalyze() {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(analyzeText, 500);
         }
 
-        // Improved File Handling with Error Messages
         async function handleFileUpload(event) {
             showLoading();
             try {
@@ -207,7 +209,6 @@
             }
         }
 
-        // Enhanced PDF Extraction
         async function extractTextFromPDF(file) {
             try {
                 const arrayBuffer = await file.arrayBuffer();
@@ -226,7 +227,6 @@
             }
         }
 
-        // Optimized Analysis
         function analyzeText() {
             showLoading();
             try {
@@ -250,7 +250,6 @@
             document.getElementById('uniqueWords').textContent = Object.keys(wordFrequency).length;
         }
 
-        // Enhanced Display with Virtual DOM
         function displayResults() {
             const resultBody = document.getElementById('resultBody');
             const fragment = document.createDocumentFragment();
@@ -261,11 +260,6 @@
                     <td>${word}</td>
                     <td>${freq}</td>
                     <td>${[...word].length}</td>
-                    <td>
-                        <button onclick="highlightWord('${word}')" class="btn btn-sm btn-outline-primary">
-                            <i class="bi bi-search"></i>
-                        </button>
-                    </td>
                 `;
                 fragment.appendChild(row);
             });
@@ -274,15 +268,6 @@
             resultBody.appendChild(fragment);
         }
 
-        // Highlight Word in Input
-        function highlightWord(word) {
-            const textarea = document.getElementById('textInput');
-            const text = textarea.value;
-            const regex = new RegExp(`(${word})`, 'gi');
-            textarea.innerHTML = text.replace(regex, '<mark>$1</mark>');
-        }
-
-        // Export Functions
         function exportCSV() {
             const csv = ['Word,Frequency,Length'];
             Object.entries(wordFrequency).forEach(([word, freq]) => {
@@ -306,7 +291,6 @@
             URL.revokeObjectURL(url);
         }
 
-        // Utility Functions
         function showLoading() {
             document.getElementById('loading').classList.remove('d-none');
         }
@@ -322,7 +306,6 @@
             updateStats(0);
         }
 
-        // Existing sort and filter functions (modified for new table structure)
         function sortWords(criterion, order) {
             const rows = Array.from(document.getElementById('resultBody').rows);
             
@@ -352,8 +335,8 @@
             });
         }
 
-        // Initialize event listeners
-        document.getElementById('fileInput').addEventListener('change', handleFileUpload);
+        // Initialize the application when DOM is ready
+        document.addEventListener('DOMContentLoaded', initialize);
     </script>
 </body>
 </html>
