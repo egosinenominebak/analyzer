@@ -1,6 +1,4 @@
-<img width="893" alt="image" src="https://github.com/user-attachments/assets/fe3a56d8-c319-4cd8-9b98-75ade4291ba7">
-
-
+![image](https://github.com/user-attachments/assets/172fae6e-e407-49be-bfd2-4c9d2880d65d)
 
 # Word Frequency Analyzer
 
