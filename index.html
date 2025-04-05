@@ -11,6 +11,7 @@
             --card-bg: #f5f5f5;
             --border-color: #dddddd;
             --highlight-color: #4a86e8;
+            --button-secondary: #6c757d;
         }
 
         [data-theme="dark"] {
@@ -19,6 +20,7 @@
             --card-bg: #333333;
             --border-color: #444444;
             --highlight-color: #619fff;
+            --button-secondary: #495057;
         }
 
         body {
@@ -85,10 +87,21 @@
             cursor: pointer;
             font-size: 16px;
             margin-top: 15px;
+            margin-right: 10px;
         }
 
         button:hover {
             opacity: 0.9;
+        }
+
+        button.secondary {
+            background-color: var(--button-secondary);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
         }
 
         .stats-grid {
@@ -139,6 +152,24 @@
             margin-top: 20px;
         }
 
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .sort-buttons {
+            display: flex;
+            gap: 5px;
+        }
+
+        .sort-button {
+            padding: 5px 10px;
+            font-size: 14px;
+            background-color: var(--button-secondary);
+        }
+
         #wordFrequency {
             width: 100%;
             border-collapse: collapse;
@@ -154,6 +185,11 @@
         #wordFrequency th {
             background-color: var(--highlight-color);
             color: white;
+            cursor: pointer;
+        }
+
+        #wordFrequency th:hover {
+            background-color: var(--button-secondary);
         }
 
         #wordFrequency tr:nth-child(even) {
@@ -183,11 +219,17 @@
                 </select>
             </div>
             <textarea id="textInput" placeholder="Enter text to analyze..."></textarea>
-            <button onclick="analyzeText()">Analyze Text</button>
+            <div class="button-group">
+                <button onclick="analyzeText()">Analyze Text</button>
+            </div>
         </div>
         
         <div class="result-section" id="results" style="display: none;">
             <h2>Analysis Results</h2>
+            
+            <div class="button-group">
+                <button onclick="saveToCSV()">Save to CSV</button>
+            </div>
             
             <div class="stats-grid">
                 <div class="stat-card">
@@ -225,14 +267,21 @@
             </div>
             
             <div id="wordDetails">
-                <h3>Word Frequency</h3>
-                <p>Top 20 most common words:</p>
+                <div class="table-header">
+                    <h3>Word Frequency</h3>
+                    <div class="sort-buttons">
+                        <button class="sort-button" onclick="sortWordTable('word')">Sort by Word</button>
+                        <button class="sort-button" onclick="sortWordTable('count')">Sort by Frequency</button>
+                        <button class="sort-button" onclick="sortWordTable('length')">Sort by Length</button>
+                    </div>
+                </div>
                 <table id="wordFrequency">
                     <thead>
                         <tr>
-                            <th>Word</th>
-                            <th>Count</th>
-                            <th>Percentage</th>
+                            <th onclick="sortWordTable('word')">Word</th>
+                            <th onclick="sortWordTable('count')">Count</th>
+                            <th onclick="sortWordTable('percentage')">Percentage</th>
+                            <th onclick="sortWordTable('length')">Length</th>
                         </tr>
                     </thead>
                     <tbody id="wordFrequencyBody">
@@ -259,6 +308,19 @@
                 localStorage.setItem('theme', 'dark');
             }
         }
+
+        // Store analysis results globally to use for sorting and CSV export
+        let analysisResults = {
+            wordFrequency: [],
+            totalWords: 0,
+            charCount: 0,
+            charNoSpaces: 0,
+            sentenceCount: 0,
+            paragraphCount: 0,
+            avgWordLength: 0,
+            uniqueWords: 0,
+            readingTime: 0
+        };
 
         // Check user's preference on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -345,10 +407,30 @@
                 }
             }
             
-            // Sort word frequency
-            const sortedWordFrequency = Object.entries(wordFrequency)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 20);
+            // Prepare word frequency array for sorting
+            const wordFrequencyArray = Object.entries(wordFrequency).map(([word, count]) => {
+                const percentage = ((count / wordCount) * 100).toFixed(1);
+                return { 
+                    word, 
+                    count, 
+                    percentage: parseFloat(percentage),
+                    length: word.length 
+                };
+            });
+            
+            // Store results globally
+            analysisResults = {
+                wordFrequency: wordFrequencyArray,
+                totalWords: wordCount,
+                charCount,
+                charNoSpaces,
+                sentenceCount,
+                paragraphCount,
+                avgWordLength,
+                uniqueWords: uniqueWordsCount,
+                readingTime,
+                charDistribution
+            };
             
             // Update DOM with results
             document.getElementById('charCount').textContent = charCount;
@@ -360,20 +442,8 @@
             document.getElementById('uniqueWords').textContent = uniqueWordsCount;
             document.getElementById('readingTime').textContent = readingTime;
             
-            // Word frequency table
-            const wordFrequencyBody = document.getElementById('wordFrequencyBody');
-            wordFrequencyBody.innerHTML = '';
-            
-            sortedWordFrequency.forEach(([word, count]) => {
-                const percentage = ((count / wordCount) * 100).toFixed(1);
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${word}</td>
-                    <td>${count}</td>
-                    <td>${percentage}%</td>
-                `;
-                wordFrequencyBody.appendChild(row);
-            });
+            // Sort by count by default and update table
+            sortWordTable('count');
             
             // Character distribution (top 10)
             const sortedCharDistribution = Object.entries(charDistribution)
@@ -390,6 +460,110 @@
             
             // Show results
             document.getElementById('results').style.display = 'block';
+        }
+        
+        // Sort the word frequency table
+        function sortWordTable(sortBy) {
+            const wordFrequencyBody = document.getElementById('wordFrequencyBody');
+            wordFrequencyBody.innerHTML = '';
+            
+            // Create a copy to sort
+            const sortedWordFrequency = [...analysisResults.wordFrequency];
+            
+            // Sort based on criteria
+            switch(sortBy) {
+                case 'word':
+                    sortedWordFrequency.sort((a, b) => a.word.localeCompare(b.word));
+                    break;
+                case 'count':
+                    sortedWordFrequency.sort((a, b) => b.count - a.count);
+                    break;
+                case 'percentage':
+                    sortedWordFrequency.sort((a, b) => b.percentage - a.percentage);
+                    break;
+                case 'length':
+                    sortedWordFrequency.sort((a, b) => b.length - a.length);
+                    break;
+                default:
+                    sortedWordFrequency.sort((a, b) => b.count - a.count);
+            }
+            
+            // Limit to top 50 entries
+            const topEntries = sortedWordFrequency.slice(0, 50);
+            
+            // Populate the table
+            topEntries.forEach(({ word, count, percentage, length }) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${word}</td>
+                    <td>${count}</td>
+                    <td>${percentage}%</td>
+                    <td>${length}</td>
+                `;
+                wordFrequencyBody.appendChild(row);
+            });
+        }
+        
+        // Save analysis results to CSV file
+        function saveToCSV() {
+            // Create CSV content
+            let csvContent = "data:text/csv;charset=utf-8,";
+            
+            // Add basic stats
+            csvContent += "Text Analysis Results\r\n\r\n";
+            csvContent += "Metric,Value\r\n";
+            csvContent += `Total Characters,${analysisResults.charCount}\r\n`;
+            csvContent += `Characters (no spaces),${analysisResults.charNoSpaces}\r\n`;
+            csvContent += `Word Count,${analysisResults.totalWords}\r\n`;
+            csvContent += `Unique Words,${analysisResults.uniqueWords}\r\n`;
+            csvContent += `Sentences,${analysisResults.sentenceCount}\r\n`;
+            csvContent += `Paragraphs,${analysisResults.paragraphCount}\r\n`;
+            csvContent += `Average Word Length,${analysisResults.avgWordLength}\r\n`;
+            csvContent += `Reading Time (minutes),${analysisResults.readingTime}\r\n\r\n`;
+            
+            // Add word frequency data
+            csvContent += "Word Frequency\r\n";
+            csvContent += "Word,Count,Percentage,Length\r\n";
+            
+            // Sort by frequency (high to low)
+            const sortedFrequency = [...analysisResults.wordFrequency].sort((a, b) => b.count - a.count);
+            
+            sortedFrequency.forEach(({ word, count, percentage, length }) => {
+                // Escape quotes in words if any
+                const escapedWord = word.replace(/"/g, '""');
+                csvContent += `"${escapedWord}",${count},${percentage}%,${length}\r\n`;
+            });
+            
+            // Add character distribution
+            csvContent += "\r\nCharacter Distribution\r\n";
+            csvContent += "Character,Count,Percentage\r\n";
+            
+            // Sort character distribution by frequency
+            const charDistributionArray = Object.entries(analysisResults.charDistribution)
+                .map(([char, count]) => {
+                    const percentage = ((count / analysisResults.charNoSpaces) * 100).toFixed(1);
+                    return { char, count, percentage };
+                })
+                .sort((a, b) => b.count - a.count);
+            
+            charDistributionArray.forEach(({ char, count, percentage }) => {
+                csvContent += `"${char}",${count},${percentage}%\r\n`;
+            });
+            
+            // Create download link
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            
+            // Get current date and time for filename
+            const now = new Date();
+            const dateString = now.toISOString().slice(0, 19).replace(/[T:]/g, "-");
+            link.setAttribute("download", `text-analysis-${dateString}.csv`);
+            
+            // Append to body, trigger click and remove
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
     </script>
 </body>
