@@ -1,4 +1,4 @@
-![image](https://github.com/user-attachments/assets/172fae6e-e407-49be-bfd2-4c9d2880d65d)
+
 
 # Word Frequency Analyzer
 
