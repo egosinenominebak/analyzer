@@ -1,342 +1,396 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Word Frequency Analyzer ✨ (Amharic Supported)</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.9.359/pdf.min.js"></script>
+    <title>Text Analyzer</title>
     <style>
         :root {
-            --gradient-start: #6366f1;
-            --gradient-end: #a855f7;
+            --background-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #f5f5f5;
+            --border-color: #dddddd;
+            --highlight-color: #4a86e8;
         }
 
-        body { 
-            padding-top: 50px;
-            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
-            min-height: 100vh;
+        [data-theme="dark"] {
+            --background-color: #222222;
+            --text-color: #e0e0e0;
+            --card-bg: #333333;
+            --border-color: #444444;
+            --highlight-color: #619fff;
         }
 
-        .card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            background: rgba(255, 255, 255, 0.95);
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
         }
 
-        .table-responsive {
-            max-height: 60vh;
-            overflow-y: auto;
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
         }
 
-        .fixed-header th {
-            position: sticky;
-            top: 0;
-            background: white;
-            z-index: 10;
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: var(--highlight-color);
         }
 
-        @font-face {
-            font-family: 'Noto Sans Ethiopic';
-            src: url('https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic&display=swap');
-        }
-
-        body, input, textarea, button {
-            font-family: 'Noto Sans Ethiopic', Arial, sans-serif;
-        }
-
-        .theme-switch {
-            position: fixed;
+        .theme-toggle {
+            position: absolute;
             top: 20px;
             right: 20px;
+            background: var(--highlight-color);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
             cursor: pointer;
+            font-weight: bold;
         }
 
-        .badge-gradient {
-            background: linear-gradient(45deg, var(--gradient-start), var(--gradient-end));
+        .input-section, .result-section {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            border: 1px solid var(--border-color);
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 12px;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+            font-family: inherit;
+            font-size: 16px;
+            box-sizing: border-box;
+            background-color: var(--background-color);
+            color: var(--text-color);
+        }
+
+        button {
+            background-color: var(--highlight-color);
             color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 15px;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background-color: var(--background-color);
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            margin: 5px 0;
+            color: var(--highlight-color);
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--text-color);
+        }
+
+        .char-distribution {
+            margin-top: 30px;
+        }
+
+        .language-selector {
+            margin-bottom: 15px;
+        }
+
+        select {
+            padding: 8px;
+            font-size: 16px;
+            border-radius: 4px;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        #wordDetails {
+            margin-top: 20px;
+        }
+
+        #wordFrequency {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        #wordFrequency th, #wordFrequency td {
+            border: 1px solid var(--border-color);
+            padding: 8px;
+            text-align: left;
+        }
+
+        #wordFrequency th {
+            background-color: var(--highlight-color);
+            color: white;
+        }
+
+        #wordFrequency tr:nth-child(even) {
+            background-color: var(--card-bg);
         }
     </style>
 </head>
 <body>
-    <div class="theme-switch">
-        <button onclick="toggleTheme()" class="btn btn-dark btn-sm">
-            <i class="bi bi-moon-stars"></i>
-        </button>
-    </div>
-
     <div class="container">
-        <h1 class="text-center mb-4 text-white fw-bold">Word Frequency Analyzer ✨<br><small class="text-white-50">with Amharic Support</small></h1>
+        <button class="theme-toggle" onclick="toggleTheme()">Toggle Dark Mode</button>
+        <h1>Advanced Text Analyzer</h1>
         
-        <div class="row g-4">
-            <div class="col-lg-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="card-title"><i class="bi bi-input-cursor-text"></i> Input</h2>
-                        <textarea id="textInput" class="form-control mb-3" rows="10" 
-                                  placeholder="Enter text or upload file (Supports Amharic)..." 
-                                  oninput="debouncedAnalyze()"></textarea>
-                        
-                        <div class="d-flex flex-wrap gap-2 mb-3">
-                            <input type="file" id="fileInput" class="form-control" accept=".txt,.pdf" hidden>
-                            <button onclick="document.getElementById('fileInput').click()" class="btn btn-outline-primary">
-                                <i class="bi bi-upload"></i> Upload File
-                            </button>
-                            <button onclick="analyzeText()" class="btn btn-primary">
-                                <i class="bi bi-play-circle"></i> Analyze
-                            </button>
-                            <button onclick="clearAll()" class="btn btn-danger">
-                                <i class="bi bi-x-circle"></i> Clear
-                            </button>
-                        </div>
-
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <div class="input-group">
-                                    <span class="input-group-text"><i class="bi bi-filter"></i></span>
-                                    <input type="number" id="minLength" class="form-control" value="1" min="1" 
-                                           placeholder="Min length">
-                                    <button onclick="filterByLength()" class="btn btn-secondary">Filter</button>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="input-group">
-                                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                                        <i class="bi bi-sort-down"></i> Sort
-                                    </button>
-                                    <ul class="dropdown-menu">
-                                        <li><a class="dropdown-item" href="#" onclick="sortWords('freq', 'desc')">Frequency (High → Low)</a></li>
-                                        <li><a class="dropdown-item" href="#" onclick="sortWords('freq', 'asc')">Frequency (Low → High)</a></li>
-                                        <li><hr class="dropdown-divider"></li>
-                                        <li><a class="dropdown-item" href="#" onclick="sortWords('length', 'desc')">Length (Long → Short)</a></li>
-                                        <li><a class="dropdown-item" href="#" onclick="sortWords('length', 'asc')">Length (Short → Long)</a></li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <div class="input-section">
+            <div class="language-selector">
+                <label for="language">Text Language:</label>
+                <select id="language">
+                    <option value="latin">Latin (English, Spanish, French, etc.)</option>
+                    <option value="cyrillic">Cyrillic (Russian, Ukrainian, etc.)</option>
+                    <option value="chinese">Chinese</option>
+                    <option value="japanese">Japanese</option>
+                    <option value="arabic">Arabic</option>
+                    <option value="hebrew">Hebrew</option>
+                    <option value="devanagari">Devanagari (Hindi, Sanskrit, etc.)</option>
+                    <option value="greek">Greek</option>
+                    <option value="korean">Korean</option>
+                    <option value="thai">Thai</option>
+                </select>
+            </div>
+            <textarea id="textInput" placeholder="Enter text to analyze..."></textarea>
+            <button onclick="analyzeText()">Analyze Text</button>
+        </div>
+        
+        <div class="result-section" id="results" style="display: none;">
+            <h2>Analysis Results</h2>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="charCount">0</div>
+                    <div class="stat-label">Characters</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="charNoSpaces">0</div>
+                    <div class="stat-label">Characters (no spaces)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="wordCount">0</div>
+                    <div class="stat-label">Words</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="sentenceCount">0</div>
+                    <div class="stat-label">Sentences</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="paragraphCount">0</div>
+                    <div class="stat-label">Paragraphs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="avgWordLength">0</div>
+                    <div class="stat-label">Avg. Word Length</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="uniqueWords">0</div>
+                    <div class="stat-label">Unique Words</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="readingTime">0</div>
+                    <div class="stat-label">Reading Time (min)</div>
                 </div>
             </div>
-
-            <div class="col-lg-6">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h2 class="card-title"><i class="bi bi-bar-chart-line"></i> Results</h2>
-                        <div class="d-flex gap-3 mb-3">
-                            <span class="badge badge-gradient">Total Words: <span id="totalWords">0</span></span>
-                            <span class="badge badge-gradient">Unique Words: <span id="uniqueWords">0</span></span>
-                        </div>
-                        
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="fixed-header">
-                                    <tr>
-                                        <th>Word</th>
-                                        <th>Frequency</th>
-                                        <th>Length</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="resultBody"></tbody>
-                            </table>
-                        </div>
-
-                        <div class="mt-3 d-flex justify-content-between">
-                            <button onclick="exportCSV()" class="btn btn-success">
-                                <i class="bi bi-filetype-csv"></i> Export CSV
-                            </button>
-                            <button onclick="exportJSON()" class="btn btn-warning">
-                                <i class="bi bi-filetype-json"></i> Export JSON
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            
+            <div id="wordDetails">
+                <h3>Word Frequency</h3>
+                <p>Top 20 most common words:</p>
+                <table id="wordFrequency">
+                    <thead>
+                        <tr>
+                            <th>Word</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody id="wordFrequencyBody">
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="char-distribution">
+                <h3>Character Distribution</h3>
+                <p id="charDistribution"></p>
             </div>
         </div>
     </div>
 
-    <!-- Loading Spinner -->
-    <div id="loading" class="d-none position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50">
-        <div class="d-flex justify-content-center align-items-center h-100">
-            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;"></div>
-        </div>
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        let wordFrequency = {};
-        let debounceTimer;
-
-        // Initialize event listeners
-        function initialize() {
-            document.getElementById('fileInput').addEventListener('change', handleFileUpload);
-            document.getElementById('textInput').addEventListener('input', debouncedAnalyze);
-        }
-
+        // Toggle between light and dark theme
         function toggleTheme() {
-            const body = document.body;
-            body.setAttribute('data-bs-theme', 
-                body.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark');
-        }
-
-        function debouncedAnalyze() {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(analyzeText, 500);
-        }
-
-        async function handleFileUpload(event) {
-            showLoading();
-            try {
-                const file = event.target.files[0];
-                if (!file) return;
-
-                let text = '';
-                if (file.type === 'text/plain') {
-                    text = await file.text();
-                } else if (file.type === 'application/pdf') {
-                    text = await extractTextFromPDF(file);
-                } else {
-                    throw new Error('Unsupported file type');
-                }
-
-                document.getElementById('textInput').value = text;
-                analyzeText();
-            } catch (error) {
-                alert(`Error: ${error.message}`);
-            } finally {
-                hideLoading();
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            if (currentTheme === 'dark') {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'light');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('theme', 'dark');
             }
         }
 
-        async function extractTextFromPDF(file) {
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-                let text = '';
-
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const content = await page.getTextContent();
-                    text += content.items.map(item => item.str).join(' ') + '\n';
-                }
-
-                return text;
-            } catch (error) {
-                throw new Error('Failed to read PDF file');
+        // Check user's preference on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
             }
-        }
+        });
 
         function analyzeText() {
-            showLoading();
-            try {
-                const text = document.getElementById('textInput').value;
-                wordFrequency = {};
-                
-                const words = text.match(/[\u1200-\u137F\w]+/gu) || [];
-                words.forEach(word => {
-                    wordFrequency[word] = (wordFrequency[word] || 0) + 1;
-                });
-
-                updateStats(words.length);
-                displayResults();
-            } finally {
-                hideLoading();
-            }
-        }
-
-        function updateStats(totalWords) {
-            document.getElementById('totalWords').textContent = totalWords;
-            document.getElementById('uniqueWords').textContent = Object.keys(wordFrequency).length;
-        }
-
-        function displayResults() {
-            const resultBody = document.getElementById('resultBody');
-            const fragment = document.createDocumentFragment();
+            const text = document.getElementById('textInput').value;
+            const language = document.getElementById('language').value;
             
-            Object.entries(wordFrequency).forEach(([word, freq]) => {
+            if (!text.trim()) {
+                alert('Please enter some text to analyze.');
+                return;
+            }
+            
+            // Basic stats
+            const charCount = text.length;
+            const charNoSpaces = text.replace(/\s/g, '').length;
+            
+            // Handle word counting based on language
+            let words;
+            let wordCount;
+            let wordFrequency = {};
+            
+            if (language === 'chinese' || language === 'japanese' || language === 'thai') {
+                // For languages without clear word boundaries, approximate using characters
+                words = [...text].filter(char => !/\s/.test(char));
+                wordCount = words.length;
+                
+                // Simple frequency counting for characters
+                for (const char of words) {
+                    wordFrequency[char] = (wordFrequency[char] || 0) + 1;
+                }
+            } else {
+                // For languages with word boundaries
+                words = text.trim().split(/\s+/);
+                wordCount = words.length;
+                
+                // Word frequency
+                for (const word of words) {
+                    const cleanWord = word.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
+                    if (cleanWord) {
+                        wordFrequency[cleanWord] = (wordFrequency[cleanWord] || 0) + 1;
+                    }
+                }
+            }
+            
+            // Get unique words count
+            const uniqueWordsCount = Object.keys(wordFrequency).length;
+            
+            // Calculate average word length
+            let totalLength = 0;
+            Object.keys(wordFrequency).forEach(word => {
+                totalLength += word.length * wordFrequency[word];
+            });
+            const avgWordLength = (totalLength / wordCount).toFixed(1);
+            
+            // Sentence and paragraph counting
+            // Note: This is a simple approximation and may not work perfectly for all languages
+            let sentenceCount = 0;
+            
+            if (language === 'chinese' || language === 'japanese') {
+                // For Chinese and Japanese, count sentences by period, question mark, exclamation mark, etc.
+                sentenceCount = (text.match(/[。！？.!?]/g) || []).length || 1;
+            } else if (language === 'arabic') {
+                sentenceCount = (text.match(/[.!?؟]/g) || []).length || 1;
+            } else {
+                sentenceCount = (text.match(/[.!?]+[\s\n]+|[.!?]+$/g) || []).length || 1;
+            }
+            
+            const paragraphCount = text.split(/\n\s*\n/).filter(p => p.trim()).length || 1;
+            
+            // Estimate reading time (about 200 words per minute for average reader)
+            const readingTime = Math.ceil(wordCount / 200);
+            
+            // Character distribution
+            const charDistribution = {};
+            for (const char of text) {
+                if (!/\s/.test(char)) {
+                    charDistribution[char] = (charDistribution[char] || 0) + 1;
+                }
+            }
+            
+            // Sort word frequency
+            const sortedWordFrequency = Object.entries(wordFrequency)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 20);
+            
+            // Update DOM with results
+            document.getElementById('charCount').textContent = charCount;
+            document.getElementById('charNoSpaces').textContent = charNoSpaces;
+            document.getElementById('wordCount').textContent = wordCount;
+            document.getElementById('sentenceCount').textContent = sentenceCount;
+            document.getElementById('paragraphCount').textContent = paragraphCount;
+            document.getElementById('avgWordLength').textContent = avgWordLength;
+            document.getElementById('uniqueWords').textContent = uniqueWordsCount;
+            document.getElementById('readingTime').textContent = readingTime;
+            
+            // Word frequency table
+            const wordFrequencyBody = document.getElementById('wordFrequencyBody');
+            wordFrequencyBody.innerHTML = '';
+            
+            sortedWordFrequency.forEach(([word, count]) => {
+                const percentage = ((count / wordCount) * 100).toFixed(1);
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${word}</td>
-                    <td>${freq}</td>
-                    <td>${[...word].length}</td>
+                    <td>${count}</td>
+                    <td>${percentage}%</td>
                 `;
-                fragment.appendChild(row);
+                wordFrequencyBody.appendChild(row);
             });
             
-            resultBody.innerHTML = '';
-            resultBody.appendChild(fragment);
-        }
-
-        function exportCSV() {
-            const csv = ['Word,Frequency,Length'];
-            Object.entries(wordFrequency).forEach(([word, freq]) => {
-                csv.push(`${word},${freq},${[...word].length}`);
-            });
-            downloadFile(csv.join('\n'), 'text/csv', 'word-frequency.csv');
-        }
-
-        function exportJSON() {
-            const data = JSON.stringify(wordFrequency, null, 2);
-            downloadFile(data, 'application/json', 'word-frequency.json');
-        }
-
-        function downloadFile(content, type, filename) {
-            const blob = new Blob([content], { type });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function showLoading() {
-            document.getElementById('loading').classList.remove('d-none');
-        }
-
-        function hideLoading() {
-            document.getElementById('loading').classList.add('d-none');
-        }
-
-        function clearAll() {
-            document.getElementById('textInput').value = '';
-            wordFrequency = {};
-            document.getElementById('resultBody').innerHTML = '';
-            updateStats(0);
-        }
-
-        function sortWords(criterion, order) {
-            const rows = Array.from(document.getElementById('resultBody').rows);
+            // Character distribution (top 10)
+            const sortedCharDistribution = Object.entries(charDistribution)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
             
-            rows.sort((a, b) => {
-                const aValue = criterion === 'freq' 
-                    ? parseInt(a.cells[1].textContent) 
-                    : parseInt(a.cells[2].textContent);
-                const bValue = criterion === 'freq' 
-                    ? parseInt(b.cells[1].textContent) 
-                    : parseInt(b.cells[2].textContent);
-                
-                return order === 'asc' ? aValue - bValue : bValue - aValue;
+            let charDistributionText = '';
+            sortedCharDistribution.forEach(([char, count]) => {
+                const percentage = ((count / charNoSpaces) * 100).toFixed(1);
+                charDistributionText += `'${char}': ${count} (${percentage}%), `;
             });
             
-            const resultBody = document.getElementById('resultBody');
-            resultBody.innerHTML = '';
-            rows.forEach(row => resultBody.appendChild(row));
-        }
-
-        function filterByLength() {
-            const minLength = parseInt(document.getElementById('minLength').value);
-            const rows = Array.from(document.getElementById('resultBody').rows);
+            document.getElementById('charDistribution').textContent = charDistributionText.slice(0, -2);
             
-            rows.forEach(row => {
-                const wordLength = parseInt(row.cells[2].textContent);
-                row.style.display = wordLength >= minLength ? '' : 'none';
-            });
+            // Show results
+            document.getElementById('results').style.display = 'block';
         }
-
-        // Initialize the application when DOM is ready
-        document.addEventListener('DOMContentLoaded', initialize);
     </script>
 </body>
 </html>
