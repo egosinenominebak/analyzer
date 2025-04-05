@@ -170,6 +170,18 @@
             background-color: var(--button-secondary);
         }
 
+        .sort-button.active {
+            background-color: var(--highlight-color);
+        }
+
+        .sort-button.active[data-direction="asc"]::after {
+            content: " ↑";
+        }
+
+        .sort-button.active[data-direction="desc"]::after {
+            content: " ↓";
+        }
+
         #wordFrequency {
             width: 100%;
             border-collapse: collapse;
@@ -186,10 +198,23 @@
             background-color: var(--highlight-color);
             color: white;
             cursor: pointer;
+            position: relative;
         }
 
         #wordFrequency th:hover {
             background-color: var(--button-secondary);
+        }
+
+        #wordFrequency th.sorted-asc::after {
+            content: " ↑";
+            position: absolute;
+            right: 8px;
+        }
+
+        #wordFrequency th.sorted-desc::after {
+            content: " ↓";
+            position: absolute;
+            right: 8px;
         }
 
         #wordFrequency tr:nth-child(even) {
@@ -270,18 +295,18 @@
                 <div class="table-header">
                     <h3>Word Frequency</h3>
                     <div class="sort-buttons">
-                        <button class="sort-button" onclick="sortWordTable('word')">Sort by Word</button>
-                        <button class="sort-button" onclick="sortWordTable('count')">Sort by Frequency</button>
-                        <button class="sort-button" onclick="sortWordTable('length')">Sort by Length</button>
+                        <button class="sort-button" id="sortWord" data-sort="word" data-direction="asc" onclick="sortWordTable('word')">Sort by Word</button>
+                        <button class="sort-button active" id="sortCount" data-sort="count" data-direction="desc" onclick="sortWordTable('count')">Sort by Frequency</button>
+                        <button class="sort-button" id="sortLength" data-sort="length" data-direction="desc" onclick="sortWordTable('length')">Sort by Length</button>
                     </div>
                 </div>
                 <table id="wordFrequency">
                     <thead>
                         <tr>
-                            <th onclick="sortWordTable('word')">Word</th>
-                            <th onclick="sortWordTable('count')">Count</th>
-                            <th onclick="sortWordTable('percentage')">Percentage</th>
-                            <th onclick="sortWordTable('length')">Length</th>
+                            <th id="thWord" onclick="sortWordTable('word')">Word</th>
+                            <th id="thCount" class="sorted-desc" onclick="sortWordTable('count')">Count</th>
+                            <th id="thPercentage" onclick="sortWordTable('percentage')">Percentage</th>
+                            <th id="thLength" onclick="sortWordTable('length')">Length</th>
                         </tr>
                     </thead>
                     <tbody id="wordFrequencyBody">
@@ -297,6 +322,12 @@
     </div>
 
     <script>
+        // Current sorting state
+        let currentSort = {
+            column: 'count',
+            direction: 'desc'
+        };
+
         // Toggle between light and dark theme
         function toggleTheme() {
             const currentTheme = document.documentElement.getAttribute('data-theme');
@@ -442,7 +473,9 @@
             document.getElementById('uniqueWords').textContent = uniqueWordsCount;
             document.getElementById('readingTime').textContent = readingTime;
             
-            // Sort by count by default and update table
+            // Reset sort state to default (count desc) and update table
+            currentSort = { column: 'count', direction: 'desc' };
+            updateSortButtons();
             sortWordTable('count');
             
             // Character distribution (top 10)
@@ -462,30 +495,87 @@
             document.getElementById('results').style.display = 'block';
         }
         
+        // Update sort buttons UI
+        function updateSortButtons() {
+            // Clear all active states and classes
+            document.querySelectorAll('.sort-button').forEach(button => {
+                button.classList.remove('active');
+                button.setAttribute('data-direction', 'asc');
+            });
+            
+            document.querySelectorAll('#wordFrequency th').forEach(th => {
+                th.classList.remove('sorted-asc', 'sorted-desc');
+            });
+            
+            // Set active state for current sorting column
+            const sortButton = document.getElementById(`sort${currentSort.column.charAt(0).toUpperCase() + currentSort.column.slice(1)}`);
+            if (sortButton) {
+                sortButton.classList.add('active');
+                sortButton.setAttribute('data-direction', currentSort.direction);
+            }
+            
+            // Set sorted class for table header
+            const thElement = document.getElementById(`th${currentSort.column.charAt(0).toUpperCase() + currentSort.column.slice(1)}`);
+            if (thElement) {
+                thElement.classList.add(`sorted-${currentSort.direction}`);
+            }
+        }
+        
         // Sort the word frequency table
         function sortWordTable(sortBy) {
+            // Check if clicking the same column to toggle direction
+            if (currentSort.column === sortBy) {
+                currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                // Set default direction based on column type
+                if (sortBy === 'word') {
+                    currentSort.direction = 'asc'; // Alphabetical default: A to Z
+                } else {
+                    currentSort.direction = 'desc'; // Numeric default: High to Low
+                }
+                currentSort.column = sortBy;
+            }
+            
+            // Update sort buttons UI
+            updateSortButtons();
+            
             const wordFrequencyBody = document.getElementById('wordFrequencyBody');
             wordFrequencyBody.innerHTML = '';
             
             // Create a copy to sort
             const sortedWordFrequency = [...analysisResults.wordFrequency];
             
-            // Sort based on criteria
-            switch(sortBy) {
-                case 'word':
-                    sortedWordFrequency.sort((a, b) => a.word.localeCompare(b.word));
-                    break;
-                case 'count':
-                    sortedWordFrequency.sort((a, b) => b.count - a.count);
-                    break;
-                case 'percentage':
-                    sortedWordFrequency.sort((a, b) => b.percentage - a.percentage);
-                    break;
-                case 'length':
-                    sortedWordFrequency.sort((a, b) => b.length - a.length);
-                    break;
-                default:
-                    sortedWordFrequency.sort((a, b) => b.count - a.count);
+            // Sort based on criteria and direction
+            if (currentSort.direction === 'asc') {
+                switch(sortBy) {
+                    case 'word':
+                        sortedWordFrequency.sort((a, b) => a.word.localeCompare(b.word));
+                        break;
+                    case 'count':
+                        sortedWordFrequency.sort((a, b) => a.count - b.count);
+                        break;
+                    case 'percentage':
+                        sortedWordFrequency.sort((a, b) => a.percentage - b.percentage);
+                        break;
+                    case 'length':
+                        sortedWordFrequency.sort((a, b) => a.length - b.length);
+                        break;
+                }
+            } else {
+                switch(sortBy) {
+                    case 'word':
+                        sortedWordFrequency.sort((a, b) => b.word.localeCompare(a.word));
+                        break;
+                    case 'count':
+                        sortedWordFrequency.sort((a, b) => b.count - a.count);
+                        break;
+                    case 'percentage':
+                        sortedWordFrequency.sort((a, b) => b.percentage - a.percentage);
+                        break;
+                    case 'length':
+                        sortedWordFrequency.sort((a, b) => b.length - a.length);
+                        break;
+                }
             }
             
             // Limit to top 50 entries
