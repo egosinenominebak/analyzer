@@ -312,6 +312,7 @@
                     <option value="greek">Greek</option>
                     <option value="korean">Korean</option>
                     <option value="thai">Thai</option>
+                    <option value="amharic">Amharic (Ethiopic)</option>
                 </select>
             </div>
 
@@ -595,7 +596,7 @@
             let wordCount;
             let wordFrequency = {};
             
-            if (language === 'chinese' || language === 'japanese' || language === 'thai') {
+            if (language === 'chinese' || language === 'japanese' || language === 'thai' || language === 'amharic') {
                 // For languages without clear word boundaries, approximate using characters
                 words = [...text].filter(char => !/\s/.test(char));
                 wordCount = words.length;
@@ -632,7 +633,10 @@
             // Note: This is a simple approximation and may not work perfectly for all languages
             let sentenceCount = 0;
             
-            if (language === 'chinese' || language === 'japanese') {
+            if (language === 'amharic') {
+                // For Amharic, count sentences by period, question mark, etc.
+                sentenceCount = (text.match(/[።፧፨]/g) || []).length || 1;
+            } else if (language === 'chinese' || language === 'japanese') {
                 // For Chinese and Japanese, count sentences by period, question mark, exclamation mark, etc.
                 sentenceCount = (text.match(/[。！？.!?]/g) || []).length || 1;
             } else if (language === 'arabic') {
