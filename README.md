@@ -31,11 +31,20 @@ A powerful, feature-rich web-based text analysis tool that works with multiple w
   - Export all analysis results to CSV
   - Timestamped filenames for easy reference
   - Includes comprehensive statistics and frequency data
+  - UTF-8 BOM included so Excel renders non-Latin scripts correctly
+  - Formula-injection guard for cells starting with `=`, `+`, `-`, `@`
 
 - **Visual Themes**:
   - Light and dark mode support
   - User preference saved between visits
   - Modern, clean interface with responsive design
+
+- **Accessibility & UX**:
+  - Full keyboard support (tabs and sortable columns via Enter/Space, `Ctrl+Enter` to analyze)
+  - `aria` attributes, `aria-sort` on columns, and RTL layout for Arabic/Hebrew
+  - No artificial row limit on the frequency table (all unique words shown)
+  - Code-point aware counting: emoji and astral-plane characters count once
+  - Sample text loader and one-click clear
 
 ## How to Use
 
@@ -58,6 +67,18 @@ This project is open source and hosted on GitHub. Contributions, bug reports, an
 
 ### Recent Updates
 
+- Removed the 50-row limit on the word frequency table; all unique words are rendered (2026-08-28)
+- Fixed XSS: table rows are built with `textContent` instead of `innerHTML` (2026-08-28)
+- Code-point aware character counting (emoji and astral characters count once) (2026-08-28)
+- Unicode-aware tokenizer: keeps `don't` and `well-known` together, strips surrounding punctuation (2026-08-28)
+- Consistent percentage denominators across word frequency and character distribution (2026-08-28)
+- CSV export now uses a Blob with UTF-8 BOM and guards against spreadsheet formula injection (2026-08-28)
+- Language-aware reading time (words/min for spaced scripts, chars/min for CJK/Thai) (2026-08-28)
+- Proper collation per language when sorting (locale-aware `localeCompare`) (2026-08-28)
+- RTL layout automatically enabled for Arabic and Hebrew (2026-08-28)
+- Keyboard accessibility: tabs, sortable headers, `Ctrl+Enter` to analyze, `aria-sort` (2026-08-28)
+- Empty-file uploads are rejected instead of producing bogus stats (2026-08-28)
+- Added Load Sample / Clear buttons (2026-08-28)
 - Added dark mode support (2025-04-05)
 - Implemented multi-language support for various writing systems
 - Added bidirectional sorting capabilities (ascending/descending)

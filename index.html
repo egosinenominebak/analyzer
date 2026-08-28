@@ -291,17 +291,32 @@
             width: 0%;
             transition: width 0.3s;
         }
+
+        .word-count-note {
+            font-size: 13px;
+            color: var(--button-secondary);
+            margin: 5px 0 0;
+        }
+
+        button:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible,
+        .input-tab:focus-visible,
+        #wordFrequency th:focus-visible {
+            outline: 2px solid var(--highlight-color);
+            outline-offset: 2px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <button class="theme-toggle" onclick="toggleTheme()">Toggle Dark Mode</button>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" aria-pressed="false">Toggle Dark Mode</button>
         <h1>Advanced Text Analyzer</h1>
         
         <div class="input-section">
             <div class="language-selector">
                 <label for="language">Text Language:</label>
-                <select id="language">
+                <select id="language" onchange="handleLanguageChange()">
                     <option value="latin">Latin (English, Spanish, French, etc.)</option>
                     <option value="cyrillic">Cyrillic (Russian, Ukrainian, etc.)</option>
                     <option value="chinese">Chinese</option>
@@ -316,16 +331,16 @@
                 </select>
             </div>
 
-            <div class="input-tabs">
-                <div class="input-tab active" onclick="switchTab('paste')">Paste Text</div>
-                <div class="input-tab" onclick="switchTab('upload')">Upload File</div>
+            <div class="input-tabs" role="tablist">
+                <div class="input-tab active" id="tab-paste" role="tab" aria-selected="true" tabindex="0" onclick="switchTab('paste')">Paste Text</div>
+                <div class="input-tab" id="tab-upload" role="tab" aria-selected="false" tabindex="0" onclick="switchTab('upload')">Upload File</div>
             </div>
 
-            <div id="pasteInput" class="input-content active">
+            <div id="pasteInput" class="input-content active" role="tabpanel" aria-labelledby="tab-paste">
                 <textarea id="textInput" placeholder="Enter text to analyze..."></textarea>
             </div>
 
-            <div id="uploadInput" class="input-content">
+            <div id="uploadInput" class="input-content" role="tabpanel" aria-labelledby="tab-upload">
                 <div class="file-input-wrapper">
                     <label for="fileInput">Choose a text file</label>
                     <input type="file" id="fileInput" accept=".txt,.text,.csv,.md,.html,.json,.xml">
@@ -338,10 +353,12 @@
 
             <div class="button-group">
                 <button onclick="analyzeText()">Analyze Text</button>
+                <button class="secondary" onclick="loadSample()">Load Sample</button>
+                <button class="secondary" onclick="clearAll()">Clear</button>
             </div>
         </div>
         
-        <div class="result-section" id="results" style="display: none;">
+        <div class="result-section" id="results" style="display: none;" aria-live="polite">
             <h2>Analysis Results</h2>
             
             <div class="button-group">
@@ -389,16 +406,18 @@
                     <div class="sort-buttons">
                         <button class="sort-button" id="sortWord" data-sort="word" data-direction="asc" onclick="sortWordTable('word')">Sort by Word</button>
                         <button class="sort-button active" id="sortCount" data-sort="count" data-direction="desc" onclick="sortWordTable('count')">Sort by Frequency</button>
+                        <button class="sort-button" id="sortPercentage" data-sort="percentage" data-direction="desc" onclick="sortWordTable('percentage')">Sort by Percentage</button>
                         <button class="sort-button" id="sortLength" data-sort="length" data-direction="desc" onclick="sortWordTable('length')">Sort by Length</button>
                     </div>
                 </div>
+                <p id="wordCountNote" class="word-count-note"></p>
                 <table id="wordFrequency">
                     <thead>
                         <tr>
-                            <th id="thWord" onclick="sortWordTable('word')">Word</th>
-                            <th id="thCount" class="sorted-desc" onclick="sortWordTable('count')">Count</th>
-                            <th id="thPercentage" onclick="sortWordTable('percentage')">Percentage</th>
-                            <th id="thLength" onclick="sortWordTable('length')">Length</th>
+                            <th id="thWord" data-sort="word" tabindex="0" onclick="sortWordTable('word')">Word</th>
+                            <th id="thCount" class="sorted-desc" data-sort="count" tabindex="0" onclick="sortWordTable('count')">Count</th>
+                            <th id="thPercentage" data-sort="percentage" tabindex="0" onclick="sortWordTable('percentage')">Percentage</th>
+                            <th id="thLength" data-sort="length" tabindex="0" onclick="sortWordTable('length')">Length</th>
                         </tr>
                     </thead>
                     <tbody id="wordFrequencyBody">
@@ -420,8 +439,22 @@
             direction: 'desc'
         };
 
+        // Per-language configuration: collation locale, reading speed, tokenization mode
+        const LANGUAGE_CONFIG = {
+            latin:      { locale: 'en', speed: 200, charBased: false },
+            cyrillic:   { locale: 'ru', speed: 200, charBased: false },
+            greek:      { locale: 'el', speed: 200, charBased: false },
+            devanagari: { locale: 'hi', speed: 200, charBased: false },
+            arabic:     { locale: 'ar', speed: 180, charBased: false },
+            hebrew:     { locale: 'he', speed: 180, charBased: false },
+            amharic:    { locale: 'am', speed: 200, charBased: false },
+            korean:     { locale: 'ko', speed: 300, charBased: true },
+            chinese:    { locale: 'zh', speed: 400, charBased: true },
+            japanese:   { locale: 'ja', speed: 400, charBased: true },
+            thai:       { locale: 'th', speed: 400, charBased: true }
+        };
+
         // File reader state
-        let fileContent = '';
         let fileSize = 0;
         let selectedFile = null;
 
@@ -440,27 +473,36 @@
 
         // Switch between paste and upload tabs
         function switchTab(tab) {
-            document.querySelectorAll('.input-tab').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.input-tab').forEach(el => {
+                el.classList.remove('active');
+                el.setAttribute('aria-selected', 'false');
+            });
             document.querySelectorAll('.input-content').forEach(el => el.classList.remove('active'));
-            
-            if (tab === 'paste') {
-                document.querySelector('.input-tab:nth-child(1)').classList.add('active');
-                document.getElementById('pasteInput').classList.add('active');
-            } else {
-                document.querySelector('.input-tab:nth-child(2)').classList.add('active');
-                document.getElementById('uploadInput').classList.add('active');
-            }
+
+            const isPaste = tab === 'paste';
+            const activeTab = isPaste ? document.getElementById('tab-paste') : document.getElementById('tab-upload');
+            const activeContent = isPaste ? document.getElementById('pasteInput') : document.getElementById('uploadInput');
+
+            activeTab.classList.add('active');
+            activeTab.setAttribute('aria-selected', 'true');
+            activeContent.classList.add('active');
         }
 
         // Toggle between light and dark theme
         function toggleTheme() {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            if (currentTheme === 'dark') {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const toggle = document.getElementById('themeToggle');
+
+            if (isDark) {
                 document.documentElement.removeAttribute('data-theme');
                 localStorage.setItem('theme', 'light');
+                toggle.textContent = 'Toggle Dark Mode';
+                toggle.setAttribute('aria-pressed', 'false');
             } else {
                 document.documentElement.setAttribute('data-theme', 'dark');
                 localStorage.setItem('theme', 'dark');
+                toggle.textContent = 'Toggle Light Mode';
+                toggle.setAttribute('aria-pressed', 'true');
             }
         }
 
@@ -480,8 +522,11 @@
         // Check user's preference on page load
         document.addEventListener('DOMContentLoaded', () => {
             const savedTheme = localStorage.getItem('theme');
+            const toggle = document.getElementById('themeToggle');
             if (savedTheme === 'dark') {
                 document.documentElement.setAttribute('data-theme', 'dark');
+                toggle.textContent = 'Toggle Light Mode';
+                toggle.setAttribute('aria-pressed', 'true');
             }
         });
 
@@ -585,20 +630,27 @@
         
         // Process the text for analysis
         function processText(text) {
+            if (!text || !text.trim()) {
+                alert('No text to analyze.');
+                return;
+            }
+
             const language = document.getElementById('language').value;
+            const config = LANGUAGE_CONFIG[language] || LANGUAGE_CONFIG.latin;
             
-            // Basic stats
-            const charCount = text.length;
-            const charNoSpaces = text.replace(/\s/g, '').length;
+            // Basic stats (code-point aware: emoji & astral chars count once)
+            const chars = [...text];
+            const charCount = chars.length;
+            const charNoSpaces = chars.filter(char => !/\s/u.test(char)).length;
             
             // Handle word counting based on language
             let words;
             let wordCount;
             let wordFrequency = {};
             
-            if (language === 'chinese' || language === 'japanese' || language === 'thai' || language === 'amharic') {
-                // For languages without clear word boundaries, approximate using characters
-                words = [...text].filter(char => !/\s/.test(char));
+            if (config.charBased) {
+                // No clear word boundaries: treat each letter/digit as a "word" (no punctuation)
+                words = chars.filter(char => /\p{L}|\p{N}/u.test(char));
                 wordCount = words.length;
                 
                 // Simple frequency counting for characters
@@ -606,16 +658,15 @@
                     wordFrequency[char] = (wordFrequency[char] || 0) + 1;
                 }
             } else {
-                // For languages with word boundaries
-                words = text.trim().split(/\s+/);
+                // Word boundaries: keep internal apostrophes/hyphens ("don't", "well-known"),
+                // drop surrounding punctuation, normalize curly quotes to straight ones
+                const tokens = text.match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu) || [];
+                words = tokens.map(token => token.toLowerCase().replace(/[’‘]/g, "'"));
                 wordCount = words.length;
                 
                 // Word frequency
                 for (const word of words) {
-                    const cleanWord = word.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "");
-                    if (cleanWord) {
-                        wordFrequency[cleanWord] = (wordFrequency[cleanWord] || 0) + 1;
-                    }
+                    wordFrequency[word] = (wordFrequency[word] || 0) + 1;
                 }
             }
             
@@ -624,10 +675,10 @@
             
             // Calculate average word length
             let totalLength = 0;
-            Object.keys(wordFrequency).forEach(word => {
-                totalLength += word.length * wordFrequency[word];
-            });
-            const avgWordLength = (totalLength / wordCount).toFixed(1);
+            for (const [word, count] of Object.entries(wordFrequency)) {
+                totalLength += word.length * count;
+            }
+            const avgWordLength = wordCount ? (totalLength / wordCount).toFixed(1) : '0';
             
             // Sentence and paragraph counting
             // Note: This is a simple approximation and may not work perfectly for all languages
@@ -635,37 +686,39 @@
             
             if (language === 'amharic') {
                 // For Amharic, count sentences by period, question mark, etc.
-                sentenceCount = (text.match(/[።፧፨]/g) || []).length || 1;
+                sentenceCount = (text.match(/[።፧��]/g) || []).length;
             } else if (language === 'chinese' || language === 'japanese') {
                 // For Chinese and Japanese, count sentences by period, question mark, exclamation mark, etc.
-                sentenceCount = (text.match(/[。！？.!?]/g) || []).length || 1;
+                sentenceCount = (text.match(/[。！？.!?]/g) || []).length;
             } else if (language === 'arabic') {
-                sentenceCount = (text.match(/[.!?؟]/g) || []).length || 1;
+                sentenceCount = (text.match(/[.!?؟]/g) || []).length;
             } else {
-                sentenceCount = (text.match(/[.!?]+[\s\n]+|[.!?]+$/g) || []).length || 1;
+                sentenceCount = (text.match(/[.!?]+[\s\n]+|[.!?]+$/g) || []).length;
             }
+            if (sentenceCount === 0) sentenceCount = 1; // non-empty text = at least one sentence
             
             const paragraphCount = text.split(/\n\s*\n/).filter(p => p.trim()).length || 1;
             
-            // Estimate reading time (about 200 words per minute for average reader)
-            const readingTime = Math.ceil(wordCount / 200);
+            // Reading time, language-aware:
+            // words/minute for spaced scripts, characters/minute for CJK & Thai
+            const readingTime = Math.max(1, Math.ceil(wordCount / config.speed));
             
-            // Character distribution
+            // Character distribution (code-point aware)
             const charDistribution = {};
-            for (const char of text) {
-                if (!/\s/.test(char)) {
+            for (const char of chars) {
+                if (!/\s/u.test(char)) {
                     charDistribution[char] = (charDistribution[char] || 0) + 1;
                 }
             }
             
             // Prepare word frequency array for sorting
             const wordFrequencyArray = Object.entries(wordFrequency).map(([word, count]) => {
-                const percentage = ((count / wordCount) * 100).toFixed(1);
-                return { 
-                    word, 
-                    count, 
+                const percentage = wordCount ? ((count / wordCount) * 100).toFixed(1) : '0';
+                return {
+                    word,
+                    count,
                     percentage: parseFloat(percentage),
-                    length: word.length 
+                    length: [...word].length
                 };
             });
             
@@ -684,14 +737,14 @@
             };
             
             // Update DOM with results
-            document.getElementById('charCount').textContent = charCount;
-            document.getElementById('charNoSpaces').textContent = charNoSpaces;
-            document.getElementById('wordCount').textContent = wordCount;
-            document.getElementById('sentenceCount').textContent = sentenceCount;
-            document.getElementById('paragraphCount').textContent = paragraphCount;
+            document.getElementById('charCount').textContent = charCount.toLocaleString();
+            document.getElementById('charNoSpaces').textContent = charNoSpaces.toLocaleString();
+            document.getElementById('wordCount').textContent = wordCount.toLocaleString();
+            document.getElementById('sentenceCount').textContent = sentenceCount.toLocaleString();
+            document.getElementById('paragraphCount').textContent = paragraphCount.toLocaleString();
             document.getElementById('avgWordLength').textContent = avgWordLength;
-            document.getElementById('uniqueWords').textContent = uniqueWordsCount;
-            document.getElementById('readingTime').textContent = readingTime;
+            document.getElementById('uniqueWords').textContent = uniqueWordsCount.toLocaleString();
+            document.getElementById('readingTime').textContent = readingTime.toLocaleString();
             
             // Reset sort state to default (count desc) and update table
             currentSort = { column: 'count', direction: 'desc' };
@@ -705,14 +758,15 @@
             
             let charDistributionText = '';
             sortedCharDistribution.forEach(([char, count]) => {
-                const percentage = ((count / charNoSpaces) * 100).toFixed(1);
+                const percentage = charNoSpaces ? ((count / charNoSpaces) * 100).toFixed(1) : '0';
                 charDistributionText += `'${char}': ${count} (${percentage}%), `;
             });
             
             document.getElementById('charDistribution').textContent = charDistributionText.slice(0, -2);
             
-            // Show results
+            // Show results and scroll into view
             document.getElementById('results').style.display = 'block';
+            document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
         
         // Update sort buttons UI
@@ -721,23 +775,27 @@
             document.querySelectorAll('.sort-button').forEach(button => {
                 button.classList.remove('active');
                 button.setAttribute('data-direction', 'asc');
+                button.removeAttribute('aria-pressed');
             });
-            
+
             document.querySelectorAll('#wordFrequency th').forEach(th => {
                 th.classList.remove('sorted-asc', 'sorted-desc');
+                th.removeAttribute('aria-sort');
             });
-            
+
             // Set active state for current sorting column
             const sortButton = document.getElementById(`sort${currentSort.column.charAt(0).toUpperCase() + currentSort.column.slice(1)}`);
             if (sortButton) {
                 sortButton.classList.add('active');
                 sortButton.setAttribute('data-direction', currentSort.direction);
+                sortButton.setAttribute('aria-pressed', 'true');
             }
-            
-            // Set sorted class for table header
+
+            // Set sorted class and aria-sort for table header
             const thElement = document.getElementById(`th${currentSort.column.charAt(0).toUpperCase() + currentSort.column.slice(1)}`);
             if (thElement) {
                 thElement.classList.add(`sorted-${currentSort.direction}`);
+                thElement.setAttribute('aria-sort', currentSort.direction === 'asc' ? 'ascending' : 'descending');
             }
         }
         
@@ -755,126 +813,181 @@
                 }
                 currentSort.column = sortBy;
             }
-            
+
             // Update sort buttons UI
             updateSortButtons();
-            
+
             const wordFrequencyBody = document.getElementById('wordFrequencyBody');
-            wordFrequencyBody.innerHTML = '';
-            
-            // Create a copy to sort
-            const sortedWordFrequency = [...analysisResults.wordFrequency];
-            
-            // Sort based on criteria and direction
-            if (currentSort.direction === 'asc') {
-                switch(sortBy) {
+
+            // Create a copy to sort, using the selected language's collation for words
+            const language = document.getElementById('language').value;
+            const config = LANGUAGE_CONFIG[language] || LANGUAGE_CONFIG.latin;
+            const dir = currentSort.direction === 'asc' ? 1 : -1;
+
+            const sortedWordFrequency = [...analysisResults.wordFrequency].sort((a, b) => {
+                let result = 0;
+                switch (sortBy) {
                     case 'word':
-                        sortedWordFrequency.sort((a, b) => a.word.localeCompare(b.word));
+                        result = a.word.localeCompare(b.word, config.locale, { sensitivity: 'base' });
                         break;
                     case 'count':
-                        sortedWordFrequency.sort((a, b) => a.count - b.count);
+                        result = a.count - b.count;
                         break;
                     case 'percentage':
-                        sortedWordFrequency.sort((a, b) => a.percentage - b.percentage);
+                        result = a.percentage - b.percentage;
                         break;
                     case 'length':
-                        sortedWordFrequency.sort((a, b) => a.length - b.length);
+                        result = a.length - b.length;
                         break;
                 }
-            } else {
-                switch(sortBy) {
-                    case 'word':
-                        sortedWordFrequency.sort((a, b) => b.word.localeCompare(a.word));
-                        break;
-                    case 'count':
-                        sortedWordFrequency.sort((a, b) => b.count - a.count);
-                        break;
-                    case 'percentage':
-                        sortedWordFrequency.sort((a, b) => b.percentage - a.percentage);
-                        break;
-                    case 'length':
-                        sortedWordFrequency.sort((a, b) => b.length - a.length);
-                        break;
-                }
-            }
-            
-            // Limit to top 50 entries
-            const topEntries = sortedWordFrequency.slice(0, 50);
-            
-            // Populate the table
-            topEntries.forEach(({ word, count, percentage, length }) => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${word}</td>
-                    <td>${count}</td>
-                    <td>${percentage}%</td>
-                    <td>${length}</td>
-                `;
-                wordFrequencyBody.appendChild(row);
+                return result * dir;
             });
+
+            // Render all rows (no artificial limit) via a DocumentFragment
+            const fragment = document.createDocumentFragment();
+            for (const { word, count, percentage, length } of sortedWordFrequency) {
+                const row = document.createElement('tr');
+                for (const value of [word, count, `${percentage}%`, length]) {
+                    const td = document.createElement('td');
+                    td.textContent = value; // textContent prevents HTML injection
+                    row.appendChild(td);
+                }
+                fragment.appendChild(row);
+            }
+
+            wordFrequencyBody.innerHTML = '';
+            wordFrequencyBody.appendChild(fragment);
+
+            document.getElementById('wordCountNote').textContent =
+                `Showing all ${sortedWordFrequency.length.toLocaleString()} unique words`;
         }
         
         // Save analysis results to CSV file
         function saveToCSV() {
-            // Create CSV content
-            let csvContent = "data:text/csv;charset=utf-8,";
-            
-            // Add basic stats
-            csvContent += "Text Analysis Results\r\n\r\n";
-            csvContent += "Metric,Value\r\n";
-            csvContent += `Total Characters,${analysisResults.charCount}\r\n`;
-            csvContent += `Characters (no spaces),${analysisResults.charNoSpaces}\r\n`;
-            csvContent += `Word Count,${analysisResults.totalWords}\r\n`;
-            csvContent += `Unique Words,${analysisResults.uniqueWords}\r\n`;
-            csvContent += `Sentences,${analysisResults.sentenceCount}\r\n`;
-            csvContent += `Paragraphs,${analysisResults.paragraphCount}\r\n`;
-            csvContent += `Average Word Length,${analysisResults.avgWordLength}\r\n`;
-            csvContent += `Reading Time (minutes),${analysisResults.readingTime}\r\n\r\n`;
-            
-            // Add word frequency data
-            csvContent += "Word Frequency\r\n";
-            csvContent += "Word,Count,Percentage,Length\r\n";
-            
-            // Sort by frequency (high to low)
+            // Escape a value for CSV and guard against spreadsheet formula injection
+            const escapeCsv = (value) => {
+                const str = String(value);
+                const escaped = str.replace(/"/g, '""');
+                // Cells starting with =, +, -, @, tab or CR are treated as formulas by Excel
+                return /^[=+\-@\t\r]/.test(str) ? `"'${escaped}"` : `"${escaped}"`;
+            };
+
+            const rows = [];
+            rows.push('Text Analysis Results', '');
+            rows.push(['Metric', 'Value']);
+            rows.push(['Total Characters', analysisResults.charCount]);
+            rows.push(['Characters (no spaces)', analysisResults.charNoSpaces]);
+            rows.push(['Word Count', analysisResults.totalWords]);
+            rows.push(['Unique Words', analysisResults.uniqueWords]);
+            rows.push(['Sentences', analysisResults.sentenceCount]);
+            rows.push(['Paragraphs', analysisResults.paragraphCount]);
+            rows.push(['Average Word Length', analysisResults.avgWordLength]);
+            rows.push(['Reading Time (minutes)', analysisResults.readingTime]);
+            rows.push('', '');
+
+            rows.push('Word Frequency');
+            rows.push(['Word', 'Count', 'Percentage', 'Length']);
             const sortedFrequency = [...analysisResults.wordFrequency].sort((a, b) => b.count - a.count);
-            
-            sortedFrequency.forEach(({ word, count, percentage, length }) => {
-                // Escape quotes in words if any
-                const escapedWord = word.replace(/"/g, '""');
-                csvContent += `"${escapedWord}",${count},${percentage}%,${length}\r\n`;
-            });
-            
-            // Add character distribution
-            csvContent += "\r\nCharacter Distribution\r\n";
-            csvContent += "Character,Count,Percentage\r\n";
-            
-            // Sort character distribution by frequency
+            for (const { word, count, percentage, length } of sortedFrequency) {
+                rows.push([word, count, `${percentage}%`, length]);
+            }
+            rows.push('', '');
+
+            rows.push('Character Distribution');
+            rows.push(['Character', 'Count', 'Percentage']);
             const charDistributionArray = Object.entries(analysisResults.charDistribution)
                 .map(([char, count]) => {
-                    const percentage = ((count / analysisResults.charNoSpaces) * 100).toFixed(1);
+                    const percentage = analysisResults.charNoSpaces ? ((count / analysisResults.charNoSpaces) * 100).toFixed(1) : '0';
                     return { char, count, percentage };
                 })
                 .sort((a, b) => b.count - a.count);
-            
-            charDistributionArray.forEach(({ char, count, percentage }) => {
-                csvContent += `"${char}",${count},${percentage}%\r\n`;
-            });
-            
-            // Create download link
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            
+            for (const { char, count, percentage } of charDistributionArray) {
+                rows.push([char, count, `${percentage}%`]);
+            }
+
+            const csvContent = rows
+                .map(row => Array.isArray(row) ? row.map(escapeCsv).join(',') : row)
+                .join('\r\n');
+
+            // Blob + UTF-8 BOM so Excel renders non-Latin scripts correctly
+            // (data: URIs break on large exports; a Blob avoids URL length limits)
+            const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+
             // Get current date and time for filename
             const now = new Date();
             const dateString = now.toISOString().slice(0, 19).replace(/[T:]/g, "-");
+
+            const link = document.createElement("a");
+            link.href = url;
             link.setAttribute("download", `text-analysis-${dateString}.csv`);
-            
-            // Append to body, trigger click and remove
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
+
+        // Apply RTL direction for right-to-left scripts
+        function handleLanguageChange() {
+            const language = document.getElementById('language').value;
+            document.documentElement.dir = (language === 'arabic' || language === 'hebrew') ? 'rtl' : 'ltr';
+        }
+
+        // Load a sample text for quick experimentation
+        function loadSample() {
+            document.getElementById('textInput').value = [
+                'The quick brown fox jumps over the lazy dog. The dog, however, was not amused!',
+                '',
+                "How many words can we count in this paragraph? Let's find out — apostrophes like don't and hyphens like well-known should stay together.",
+                '',
+                'Frequency analysis is useful for cryptography, linguistics, and even SEO. Analysis of text can reveal patterns!',
+                '',
+                'The quick brown fox. The lazy dog. The quick brown fox again.'
+            ].join('\n');
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('textInput').focus();
+        }
+
+        // Clear all inputs and results
+        function clearAll() {
+            document.getElementById('textInput').value = '';
+            selectedFile = null;
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileStatus').textContent = 'No file selected';
+            document.getElementById('progressContainer').style.display = 'none';
+            document.getElementById('wordFrequencyBody').innerHTML = '';
+            document.getElementById('wordCountNote').textContent = '';
+            document.getElementById('charDistribution').textContent = '';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('textInput').focus();
+        }
+
+        // Keyboard support: Ctrl/Cmd+Enter to analyze from the textarea
+        document.getElementById('textInput').addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                analyzeText();
+            }
+        });
+
+        // Keyboard support: Enter/Space activates tabs and sortable table headers
+        document.querySelectorAll('.input-tab').forEach(tab => {
+            tab.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    switchTab(this.id === 'tab-paste' ? 'paste' : 'upload');
+                }
+            });
+        });
+
+        document.querySelectorAll('#wordFrequency th').forEach(th => {
+            th.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    sortWordTable(this.dataset.sort);
+                }
+            });
+        });
     </script>
 </body>
 </html>
