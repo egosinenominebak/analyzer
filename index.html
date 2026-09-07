@@ -98,6 +98,11 @@
             background-color: var(--button-secondary);
         }
 
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .button-group {
             display: flex;
             gap: 10px;
@@ -423,6 +428,22 @@
                     <tbody id="wordFrequencyBody">
                     </tbody>
                 </table>
+                <div class="pagination-controls" style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <div>
+                        <label for="pageSizeSelect">Rows per page: </label>
+                        <select id="pageSizeSelect" onchange="changePageSize(this.value)">
+                            <option value="50">50</option>
+                            <option value="100" selected>100</option>
+                            <option value="250">250</option>
+                            <option value="all">All</option>
+                        </select>
+                    </div>
+                    <div class="page-buttons" style="display: flex; gap: 5px; align-items: center;">
+                        <button class="secondary" id="btnPrevPage" onclick="navigatePage(-1)">Previous</button>
+                        <span id="pageIndicator">Page 1 of 1</span>
+                        <button class="secondary" id="btnNextPage" onclick="navigatePage(1)">Next</button>
+                    </div>
+                </div>
             </div>
             
             <div class="char-distribution">
@@ -516,8 +537,168 @@
             paragraphCount: 0,
             avgWordLength: 0,
             uniqueWords: 0,
-            readingTime: 0
+            readingTime: 0,
+            typeTokenRatio: 0,
+            charDistribution: {}
         };
+
+        // Inline Web Worker definition
+        const workerSource = `
+self.onmessage = function(e) {
+  const { text, language, config } = e.data;
+  if (!text || !text.trim()) {
+    self.postMessage({ error: 'Empty text' });
+    return;
+  }
+
+  // 1. Code-point counting
+  const chars = [...text];
+  const charCount = chars.length;
+  let charNoSpaces = 0;
+  const charDistribution = {};
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (!/\\s/u.test(ch)) {
+      charNoSpaces++;
+      charDistribution[ch] = (charDistribution[ch] || 0) + 1;
+    }
+  }
+
+  // 2. Tokenization via Intl.Segmenter (fallback to regex if unavailable)
+  let words = [];
+  const wordFrequency = {};
+
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(config.locale, { granularity: 'word' });
+    const segments = segmenter.segment(text);
+
+    for (const seg of segments) {
+      if (seg.isWordLike) {
+        const token = seg.segment.toLowerCase().replace(/[’‘]/g, "'");
+        words.push(token);
+        wordFrequency[token] = (wordFrequency[token] || 0) + 1;
+      }
+    }
+  } else {
+    // Fallback regex for environments lacking Intl.Segmenter
+    if (config.charBased) {
+      words = chars.filter(c => /\\p{L}|\\p{N}/u.test(c));
+    } else {
+      const tokens = text.match(/[\\p{L}\\p{N}]+(?:['’\\-][\\p{L}\\p{N}]+)*/gu) || [];
+      words = tokens.map(t => t.toLowerCase().replace(/[’‘]/g, "'"));
+    }
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      wordFrequency[w] = (wordFrequency[w] || 0) + 1;
+    }
+  }
+
+  const wordCount = words.length;
+  const uniqueWordsCount = Object.keys(wordFrequency).length;
+
+  // 3. Sentence segmentation
+  let sentenceCount = 0;
+  if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+    const sentenceSegmenter = new Intl.Segmenter(config.locale, { granularity: 'sentence' });
+    for (const s of sentenceSegmenter.segment(text)) {
+      if (s.segment.trim().length > 0) sentenceCount++;
+    }
+  } else {
+    sentenceCount = (text.match(/[.!?]+[\\s\\n]+|[.!?]+$/g) || []).length;
+  }
+  if (sentenceCount === 0) sentenceCount = 1;
+
+  // 4. Paragraph count & lexical metrics
+  const paragraphCount = text.split(/\\n\\s*\\n/).filter(p => p.trim()).length || 1;
+
+  let totalLength = 0;
+  for (const [word, count] of Object.entries(wordFrequency)) {
+    totalLength += [...word].length * count;
+  }
+  const avgWordLength = wordCount ? (totalLength / wordCount).toFixed(1) : '0';
+  const readingTime = Math.max(1, Math.ceil(wordCount / config.speed));
+  const typeTokenRatio = wordCount ? ((uniqueWordsCount / wordCount) * 100).toFixed(1) : '0';
+
+  // 5. Structure frequency table
+  const wordFrequencyArray = Object.entries(wordFrequency).map(([word, count]) => ({
+    word,
+    count,
+    percentage: wordCount ? parseFloat(((count / wordCount) * 100).toFixed(2)) : 0,
+    length: [...word].length
+  }));
+
+  self.postMessage({
+    success: true,
+    results: {
+      wordFrequency: wordFrequencyArray,
+      totalWords: wordCount,
+      charCount,
+      charNoSpaces,
+      sentenceCount,
+      paragraphCount,
+      avgWordLength,
+      uniqueWords: uniqueWordsCount,
+      readingTime,
+      typeTokenRatio,
+      charDistribution
+    }
+  });
+};
+`;
+
+        const workerBlob = new Blob([workerSource], { type: 'application/javascript' });
+        const analyzerWorker = new Worker(URL.createObjectURL(workerBlob));
+        analyzerWorker.onerror = function(err) {
+            console.error('Worker error:', err);
+            const statusEl = document.getElementById('fileStatus');
+            if (statusEl) statusEl.textContent = 'Worker error: ' + (err.message || 'analysis failed');
+        };
+
+        // Table pagination state and logic
+        let currentPage = 1;
+        let pageSize = 100;
+        let sortedDataView = [];
+
+        function changePageSize(size) {
+            pageSize = size === 'all' ? (sortedDataView.length || 100) : parseInt(size, 10);
+            currentPage = 1;
+            renderTablePage();
+        }
+
+        function navigatePage(direction) {
+            const maxPage = Math.ceil(sortedDataView.length / pageSize) || 1;
+            currentPage = Math.min(Math.max(1, currentPage + direction), maxPage);
+            renderTablePage();
+        }
+
+        function renderTablePage() {
+            const wordFrequencyBody = document.getElementById('wordFrequencyBody');
+            const fragment = document.createDocumentFragment();
+
+            const startIndex = (currentPage - 1) * pageSize;
+            const endIndex = Math.min(startIndex + pageSize, sortedDataView.length);
+            const visibleRows = sortedDataView.slice(startIndex, endIndex);
+
+            for (const { word, count, percentage, length } of visibleRows) {
+                const row = document.createElement('tr');
+                for (const val of [word, count.toLocaleString(), `${percentage}%`, length]) {
+                    const td = document.createElement('td');
+                    td.textContent = val;
+                    row.appendChild(td);
+                }
+                fragment.appendChild(row);
+            }
+
+            wordFrequencyBody.innerHTML = '';
+            wordFrequencyBody.appendChild(fragment);
+
+            // Update pagination indicators
+            const maxPage = Math.ceil(sortedDataView.length / pageSize) || 1;
+            document.getElementById('pageIndicator').textContent = `Page ${currentPage} of ${maxPage}`;
+            document.getElementById('btnPrevPage').disabled = (currentPage === 1);
+            document.getElementById('btnNextPage').disabled = (currentPage >= maxPage);
+        }
 
         // Check user's preference on page load
         document.addEventListener('DOMContentLoaded', () => {
@@ -630,143 +811,53 @@
         
         // Process the text for analysis
         function processText(text) {
-            if (!text || !text.trim()) {
-                alert('No text to analyze.');
-                return;
-            }
-
             const language = document.getElementById('language').value;
             const config = LANGUAGE_CONFIG[language] || LANGUAGE_CONFIG.latin;
-            
-            // Basic stats (code-point aware: emoji & astral chars count once)
-            const chars = [...text];
-            const charCount = chars.length;
-            const charNoSpaces = chars.filter(char => !/\s/u.test(char)).length;
-            
-            // Handle word counting based on language
-            let words;
-            let wordCount;
-            let wordFrequency = {};
-            
-            if (config.charBased) {
-                // No clear word boundaries: treat each letter/digit as a "word" (no punctuation)
-                words = chars.filter(char => /\p{L}|\p{N}/u.test(char));
-                wordCount = words.length;
-                
-                // Simple frequency counting for characters
-                for (const char of words) {
-                    wordFrequency[char] = (wordFrequency[char] || 0) + 1;
+
+            // Show a loading indicator if processing large documents
+            document.getElementById('fileStatus').textContent = 'Analyzing text in worker thread...';
+
+            analyzerWorker.onmessage = function(e) {
+                if (e.data.error) {
+                    alert(e.data.error);
+                    document.getElementById('fileStatus').textContent = e.data.error;
+                    return;
                 }
-            } else {
-                // Word boundaries: keep internal apostrophes/hyphens ("don't", "well-known"),
-                // drop surrounding punctuation, normalize curly quotes to straight ones
-                const tokens = text.match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu) || [];
-                words = tokens.map(token => token.toLowerCase().replace(/[’‘]/g, "'"));
-                wordCount = words.length;
-                
-                // Word frequency
-                for (const word of words) {
-                    wordFrequency[word] = (wordFrequency[word] || 0) + 1;
-                }
-            }
-            
-            // Get unique words count
-            const uniqueWordsCount = Object.keys(wordFrequency).length;
-            
-            // Calculate average word length
-            let totalLength = 0;
-            for (const [word, count] of Object.entries(wordFrequency)) {
-                totalLength += word.length * count;
-            }
-            const avgWordLength = wordCount ? (totalLength / wordCount).toFixed(1) : '0';
-            
-            // Sentence and paragraph counting
-            // Note: This is a simple approximation and may not work perfectly for all languages
-            let sentenceCount = 0;
-            
-            if (language === 'amharic') {
-                // For Amharic, count sentences by period, question mark, etc.
-                sentenceCount = (text.match(/[።፧��]/g) || []).length;
-            } else if (language === 'chinese' || language === 'japanese') {
-                // For Chinese and Japanese, count sentences by period, question mark, exclamation mark, etc.
-                sentenceCount = (text.match(/[。！？.!?]/g) || []).length;
-            } else if (language === 'arabic') {
-                sentenceCount = (text.match(/[.!?؟]/g) || []).length;
-            } else {
-                sentenceCount = (text.match(/[.!?]+[\s\n]+|[.!?]+$/g) || []).length;
-            }
-            if (sentenceCount === 0) sentenceCount = 1; // non-empty text = at least one sentence
-            
-            const paragraphCount = text.split(/\n\s*\n/).filter(p => p.trim()).length || 1;
-            
-            // Reading time, language-aware:
-            // words/minute for spaced scripts, characters/minute for CJK & Thai
-            const readingTime = Math.max(1, Math.ceil(wordCount / config.speed));
-            
-            // Character distribution (code-point aware)
-            const charDistribution = {};
-            for (const char of chars) {
-                if (!/\s/u.test(char)) {
-                    charDistribution[char] = (charDistribution[char] || 0) + 1;
-                }
-            }
-            
-            // Prepare word frequency array for sorting
-            const wordFrequencyArray = Object.entries(wordFrequency).map(([word, count]) => {
-                const percentage = wordCount ? ((count / wordCount) * 100).toFixed(1) : '0';
-                return {
-                    word,
-                    count,
-                    percentage: parseFloat(percentage),
-                    length: [...word].length
-                };
-            });
-            
-            // Store results globally
-            analysisResults = {
-                wordFrequency: wordFrequencyArray,
-                totalWords: wordCount,
-                charCount,
-                charNoSpaces,
-                sentenceCount,
-                paragraphCount,
-                avgWordLength,
-                uniqueWords: uniqueWordsCount,
-                readingTime,
-                charDistribution
+
+                analysisResults = e.data.results;
+
+                // Render dashboard values
+                document.getElementById('charCount').textContent = analysisResults.charCount.toLocaleString();
+                document.getElementById('charNoSpaces').textContent = analysisResults.charNoSpaces.toLocaleString();
+                document.getElementById('wordCount').textContent = analysisResults.totalWords.toLocaleString();
+                document.getElementById('sentenceCount').textContent = analysisResults.sentenceCount.toLocaleString();
+                document.getElementById('paragraphCount').textContent = analysisResults.paragraphCount.toLocaleString();
+                document.getElementById('avgWordLength').textContent = analysisResults.avgWordLength;
+                document.getElementById('uniqueWords').textContent = analysisResults.uniqueWords.toLocaleString();
+                document.getElementById('readingTime').textContent = analysisResults.readingTime.toLocaleString();
+
+                // Sort and display
+                currentSort = { column: 'count', direction: 'desc', _justReset: true };
+                sortWordTable('count', 'desc');
+
+                // Character Distribution
+                const sortedCharDistribution = Object.entries(analysisResults.charDistribution)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 10);
+
+                let charDistributionText = '';
+                sortedCharDistribution.forEach(([char, count]) => {
+                    const pct = analysisResults.charNoSpaces ? ((count / analysisResults.charNoSpaces) * 100).toFixed(1) : '0';
+                    charDistributionText += `'${char}': ${count} (${pct}%), `;
+                });
+                document.getElementById('charDistribution').textContent = charDistributionText.slice(0, -2);
+
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+                document.getElementById('fileStatus').textContent = 'Analysis complete.';
             };
-            
-            // Update DOM with results
-            document.getElementById('charCount').textContent = charCount.toLocaleString();
-            document.getElementById('charNoSpaces').textContent = charNoSpaces.toLocaleString();
-            document.getElementById('wordCount').textContent = wordCount.toLocaleString();
-            document.getElementById('sentenceCount').textContent = sentenceCount.toLocaleString();
-            document.getElementById('paragraphCount').textContent = paragraphCount.toLocaleString();
-            document.getElementById('avgWordLength').textContent = avgWordLength;
-            document.getElementById('uniqueWords').textContent = uniqueWordsCount.toLocaleString();
-            document.getElementById('readingTime').textContent = readingTime.toLocaleString();
-            
-            // Reset sort state to default (count desc) and update table
-            currentSort = { column: 'count', direction: 'desc' };
-            updateSortButtons();
-            sortWordTable('count');
-            
-            // Character distribution (top 10)
-            const sortedCharDistribution = Object.entries(charDistribution)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 10);
-            
-            let charDistributionText = '';
-            sortedCharDistribution.forEach(([char, count]) => {
-                const percentage = charNoSpaces ? ((count / charNoSpaces) * 100).toFixed(1) : '0';
-                charDistributionText += `'${char}': ${count} (${percentage}%), `;
-            });
-            
-            document.getElementById('charDistribution').textContent = charDistributionText.slice(0, -2);
-            
-            // Show results and scroll into view
-            document.getElementById('results').style.display = 'block';
-            document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+            analyzerWorker.postMessage({ text, language, config });
         }
         
         // Update sort buttons UI
@@ -800,11 +891,15 @@
         }
         
         // Sort the word frequency table
-        function sortWordTable(sortBy) {
+        function sortWordTable(sortBy, forceDirection) {
             // Check if clicking the same column to toggle direction
-            if (currentSort.column === sortBy) {
+            if (forceDirection) {
+                currentSort.column = sortBy;
+                currentSort.direction = forceDirection;
+            } else if (currentSort.column === sortBy && !currentSort._justReset) {
                 currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
             } else {
+                delete currentSort._justReset;
                 // Set default direction based on column type
                 if (sortBy === 'word') {
                     currentSort.direction = 'asc'; // Alphabetical default: A to Z
@@ -816,8 +911,6 @@
 
             // Update sort buttons UI
             updateSortButtons();
-
-            const wordFrequencyBody = document.getElementById('wordFrequencyBody');
 
             // Create a copy to sort, using the selected language's collation for words
             const language = document.getElementById('language').value;
@@ -843,20 +936,13 @@
                 return result * dir;
             });
 
-            // Render all rows (no artificial limit) via a DocumentFragment
-            const fragment = document.createDocumentFragment();
-            for (const { word, count, percentage, length } of sortedWordFrequency) {
-                const row = document.createElement('tr');
-                for (const value of [word, count, `${percentage}%`, length]) {
-                    const td = document.createElement('td');
-                    td.textContent = value; // textContent prevents HTML injection
-                    row.appendChild(td);
-                }
-                fragment.appendChild(row);
+            sortedDataView = sortedWordFrequency;
+            currentPage = 1;
+            const pageSizeSelect = document.getElementById('pageSizeSelect');
+            if (pageSizeSelect && pageSizeSelect.value === 'all') {
+                pageSize = sortedDataView.length || 1;
             }
-
-            wordFrequencyBody.innerHTML = '';
-            wordFrequencyBody.appendChild(fragment);
+            renderTablePage();
 
             document.getElementById('wordCountNote').textContent =
                 `Showing all ${sortedWordFrequency.length.toLocaleString()} unique words`;
@@ -958,6 +1044,14 @@
             document.getElementById('wordFrequencyBody').innerHTML = '';
             document.getElementById('wordCountNote').textContent = '';
             document.getElementById('charDistribution').textContent = '';
+            sortedDataView = [];
+            currentPage = 1;
+            const pageIndicator = document.getElementById('pageIndicator');
+            if (pageIndicator) pageIndicator.textContent = 'Page 1 of 1';
+            const btnPrev = document.getElementById('btnPrevPage');
+            if (btnPrev) btnPrev.disabled = true;
+            const btnNext = document.getElementById('btnNextPage');
+            if (btnNext) btnNext.disabled = true;
             document.getElementById('results').style.display = 'none';
             document.getElementById('textInput').focus();
         }
